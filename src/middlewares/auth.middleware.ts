@@ -14,11 +14,15 @@ export default function (req: Request, res: Response, next: NextFunction) {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader) return next(BaseError.UnauthorizedError());
-    const token = authHeader.split(" ")[1];
+
+    const [, token] = authHeader.split(" ");
     if (!token) return next(BaseError.UnauthorizedError());
-    const userData = tokenService.validateAccessToken(token);
-    if (!userData) return next(BaseError.UnauthorizedError());
-    req.user = userData;
+
+    const payload = tokenService.validateAccessToken(token);
+    if (!payload) return next(BaseError.UnauthorizedError());
+
+    // Support both { id, email } and { userData: {...} } payload shapes
+    req.user = (payload as any).userData ?? payload;
     next();
   } catch (error) {
     return next(BaseError.UnauthorizedError());

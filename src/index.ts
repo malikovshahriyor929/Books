@@ -3,11 +3,13 @@ import authRouter from "./routers/auth.route.js";
 import bookRouter from "./routers/book.route.js";
 import BaseError from "./errors/auth.errors.js";
 import { prisma } from "./services/prisma.js";
+import globalRouter from "./routers/global.route.js";
 
 const app = express();
 
 app.use(express.json());
 
+app.use("/", globalRouter);
 app.use("/auth", authRouter);
 app.use("/book", bookRouter);
 

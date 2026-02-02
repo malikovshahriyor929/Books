@@ -49,7 +49,7 @@ class AuthService {
     return { userdto, tokens: token };
   }
   async refreshTokens(refreshToken: string) {
-    const userData = await tokenService.validateRefreshToken(refreshToken);
+    const userData = tokenService.validateRefreshToken(refreshToken);
     if (!userData) {
       throw new Error("Invalid refresh token");
     }
@@ -59,8 +59,11 @@ class AuthService {
     if (!user) {
       throw new Error("User not found");
     }
-    const token = await tokenService.generateTokens({ userData });
-    await tokenService.saveTokens((userData as any).id, token.refreshToken);
+    const token = await tokenService.generateTokens({
+      id: user.id,
+      email: user.email,
+    });
+    await tokenService.saveTokens(user.id, token.refreshToken);
     const userdto = new userDto(user);
     return { userdto, tokens: token };
   }
@@ -86,7 +89,7 @@ class AuthService {
     accessToken: string,
     newPassword: string,
   ) {
-    const userData = await tokenService.validateAccessToken(accessToken);
+    const userData = tokenService.validateAccessToken(accessToken);
     if (!userData || (userData as any).userData.id !== userId) {
       console.log(userData as any, userId, newPassword, accessToken);
 

@@ -1,6 +1,12 @@
 import jwt from "jsonwebtoken";
 import { prisma } from "../prisma.js";
 
+export type AccessPayload = {
+  id: string;
+  email: string;
+  role?: string;
+};
+
 class TokenService {
   async generateTokens(payload: object) {
     const accessToken = jwt.sign(payload, process.env.JWT_ACCESS_KEY!, {
@@ -31,16 +37,18 @@ class TokenService {
       });
     }
   }
-  async validateAccessToken(token: string) {
+
+  validateAccessToken(token: string) {
     try {
-      return jwt.verify(token, process.env.JWT_ACCESS_KEY!);
+      return jwt.verify(token, process.env.JWT_ACCESS_KEY!) as AccessPayload | null;
     } catch (err) {
       return null;
     }
   }
-  async validateRefreshToken(token: string) {
+
+  validateRefreshToken(token: string) {
     try {
-      return jwt.verify(token, process.env.JWT_REFRESH_KEY!);
+      return jwt.verify(token, process.env.JWT_REFRESH_KEY!) as AccessPayload | null;
     } catch (err) {
       return null;
     }
