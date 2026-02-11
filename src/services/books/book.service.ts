@@ -6,6 +6,7 @@ import {
   OrderStatus,
   OrderType,
 } from "../../generated/prisma/enums.js";
+import BaseError from "../../errors/auth.errors.js";
 
 class BookService {
   async getBooks(
@@ -371,6 +372,17 @@ class BookService {
         balanceCents: updatedUser.balanceCents,
       };
     });
+  }
+  async editBook(bookId: string, userId: string) {
+    if (!userId) throw new Error("Authour id missing");
+    if (!bookId) throw new Error("Book id missing");
+    const userRole = await prisma.user.findFirst({
+      where: {
+        id: userId
+      },
+    });
+    console.log(userRole);
+    
   }
   // })
 }

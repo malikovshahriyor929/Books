@@ -9,6 +9,7 @@ router.get("/get-book/:id", authMiddleware, bookController.getBookDetails);
 router.get("/get-book-author/:id", bookController.getBookAuthtorDetails);
 router.post("/buy-book", authMiddleware, bookController.buyBook);
 router.post("/rent-book",authMiddleware, bookController.rentBook);
-router.get("/my-books", authMiddleware, bookController.myBooks )
+router.get("/my-books", authMiddleware, bookController.myBooks );
+router.put("/edit-book",authMiddleware,bookController.editBook )
 
 export default router;

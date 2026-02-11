@@ -1,11 +1,24 @@
+import "dotenv/config";
 import express from "express";
 import authRouter from "./routers/auth.route.js";
 import bookRouter from "./routers/book.route.js";
 import BaseError from "./errors/auth.errors.js";
 import { prisma } from "./services/prisma.js";
 import globalRouter from "./routers/global.route.js";
+import cors from "cors";
 
 const app = express();
+
+const allowedOrigins = process.env.CORS_ORIGINS?.split(",") || [
+  "http://localhost:3001",
+  "http://localhost:3000",
+];
+
+app.use(
+  cors({
+    origin: "*",
+  }),
+);
 
 app.use(express.json());
 
@@ -35,7 +48,7 @@ const starter = async () => {
   try {
     await prisma.$connect();
     console.log("Connected to DB");
-    app.listen(3000, () => {
+    app.listen(5050, () => {
       console.log("Server is running on port 3000");
     });
   } catch (error) {

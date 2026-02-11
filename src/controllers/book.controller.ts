@@ -180,6 +180,21 @@ class BookController {
       );
     }
   }
+  async editBook(req: e.Request, res: e.Response, next: e.NextFunction) {
+    try {
+      const { id } = req.params;
+
+      const result = await bookService.editBook(id as string, req.user.id);
+      res.status(200).json(result);
+    } catch (error) {
+      next(
+        BaseError.badRequest(
+          "Editing book failed",
+          (error as Error).message || "Unknown error",
+        ),
+      );
+    }
+  }
 }
 
 export default new BookController();
