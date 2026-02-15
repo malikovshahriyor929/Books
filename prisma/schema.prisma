@@ -120,6 +120,7 @@ model Book {
   description      String?
   coverUrl         String?
   language         String?
+  category         String?
   status           BookStatus     @default(DRAFT)
   visibility       BookVisibility @default(PUBLIC)
   monetization     Monetization   @default(FREE)
@@ -139,6 +140,7 @@ model Book {
   accesses BookAccess[]
 
   @@index([authorId])
+  @@index([category])
   @@index([status])
   @@index([visibility])
   @@index([monetization])

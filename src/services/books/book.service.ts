@@ -14,6 +14,7 @@ class BookService {
     per_page: number,
     search?: string,
     sort?: string,
+    category?: string,
   ) {
     const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
     const safePerPage =
@@ -22,19 +23,22 @@ class BookService {
     const skip = (safePage - 1) * safePerPage;
     const take = safePerPage;
 
-    const where: any = search
-      ? {
-          OR: [
-            { title: { contains: search, mode: "insensitive" } },
-            { description: { contains: search, mode: "insensitive" } },
-            {
-              author: {
-                is: { name: { contains: search, mode: "insensitive" } },
-              },
-            },
-          ],
-        }
-      : {};
+    const where: any = {};
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: "insensitive" } },
+        { description: { contains: search, mode: "insensitive" } },
+        {
+          author: {
+            is: { name: { contains: search, mode: "insensitive" } },
+          },
+        },
+      ];
+    }
+
+    if (category) {
+      where.category = { equals: category, mode: "insensitive" };
+    }
 
     const orderBy: any = sort
       ? {

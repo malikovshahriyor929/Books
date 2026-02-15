@@ -7,7 +7,7 @@ import { AccessType } from "../generated/prisma/enums.js";
 class BookController {
   async getBooks(req: e.Request, res: e.Response, next: e.NextFunction) {
     try {
-      const { page, per_page, search } = req.query;
+      const { page, per_page, search, sort, category } = req.query;
       const pageNum = Number(page ?? 1);
       const perPageNum = Number(per_page ?? 10);
 
@@ -20,6 +20,8 @@ class BookController {
         pageNum,
         perPageNum,
         search ? String(search) : undefined,
+        sort ? String(sort) : undefined,
+        category ? String(category) : undefined,
       );
 
       res.status(200).json({

@@ -1,6 +1,7 @@
 import type e from "express";
 import BaseError from "../errors/auth.errors.js";
 import { prisma } from "../services/prisma.js";
+import { BookStatus } from "../generated/prisma/enums.js";
 
 class GlobalController {
   async profile(req: e.Request, res: e.Response, next: e.NextFunction) {
@@ -18,6 +19,63 @@ class GlobalController {
       next(
         BaseError.badRequest(
           "Get books failed",
+          (error as Error).message || "Unknown error",
+        ),
+      );
+    }
+  }
+
+  async lookupBooks(req: e.Request, res: e.Response, next: e.NextFunction) {
+    try {
+      const categoryRaw = req.query.category ?? req.params.category;
+      const statusRaw = req.query.status ?? req.params.status;
+      const category = categoryRaw ? String(categoryRaw) : undefined;
+      const status = statusRaw ? String(statusRaw) : undefined;
+
+      const where: {
+        category?: { equals: string; mode: "insensitive" };
+        status?: BookStatus;
+      } = {};
+
+      if (category) {
+        where.category = { equals: String(category), mode: "insensitive" };
+      }
+
+      if (status) {
+        const normalizedStatus = String(status).toUpperCase() as BookStatus;
+        const validStatuses = Object.values(BookStatus);
+
+        if (!validStatuses.includes(normalizedStatus)) {
+          throw new Error(
+            `Invalid status. Allowed values: ${validStatuses.join(", ")}`,
+          );
+        }
+
+        where.status = normalizedStatus;
+      }
+
+      const result = await prisma.book.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          title: true,
+        },
+      });
+
+      const options = result.map((book) => ({
+        label: book.title,
+        value: book.id,
+      }));
+
+      return res.status(200).json({
+        message: "Books lookup success",
+        data: options,
+      });
+    } catch (error) {
+      next(
+        BaseError.badRequest(
+          "Lookup failed",
           (error as Error).message || "Unknown error",
         ),
       );
