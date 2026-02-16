@@ -1,4 +1,5 @@
 import type e from "express";
+import path from "node:path";
 import BaseError from "../errors/auth.errors.js";
 import { prisma } from "../services/prisma.js";
 import { BookStatus } from "../generated/prisma/enums.js";
@@ -6,15 +7,15 @@ import { BookStatus } from "../generated/prisma/enums.js";
 class GlobalController {
   async profile(req: e.Request, res: e.Response, next: e.NextFunction) {
     try {
-        const userId = req.user?.id as string | undefined;
+      const userId = req.user?.id as string | undefined;
 
-        if (!userId) {
-          return next(BaseError.UnauthorizedError());
-        }
-        const result = await prisma.user.findUnique({
-          where: { id: userId },
-        });
-        return res.status(200).json(result);
+      if (!userId) {
+        return next(BaseError.UnauthorizedError());
+      }
+      const result = await prisma.user.findUnique({
+        where: { id: userId },
+      });
+      return res.status(200).json(result);
     } catch (error) {
       next(
         BaseError.badRequest(
@@ -70,12 +71,50 @@ class GlobalController {
 
       return res.status(200).json({
         message: "Books lookup success",
-        data: options,
+        data: {
+          category: options,
+          // language: lang
+        },
       });
     } catch (error) {
       next(
         BaseError.badRequest(
           "Lookup failed",
+          (error as Error).message || "Unknown error",
+        ),
+      );
+    }
+  }
+  async upload(req: e.Request, res: e.Response, next: e.NextFunction) {
+    try {
+      const userId = req.user?.id as string | undefined;
+
+      if (!userId) {
+        return next(BaseError.UnauthorizedError());
+      }
+
+      const file = req.file;
+
+      if (!file) {
+        return next(BaseError.badRequest("Upload failed", "file is required"));
+      }
+
+      const extantion = path.extname(file.originalname || file.filename || "")
+        .replace(".", "")
+        .toLowerCase();
+      const publicId = path.parse(file.filename).name;
+      const url = `${req.protocol}://${req.get("host")}/uploads/${file.filename}`;
+
+      return res.status(201).json({
+        public_id: publicId,
+        file_size: file.size,
+        extantion,
+        url,
+      });
+    } catch (error) {
+      next(
+        BaseError.badRequest(
+          "Upload failed",
           (error as Error).message || "Unknown error",
         ),
       );

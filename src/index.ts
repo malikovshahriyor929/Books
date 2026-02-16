@@ -1,7 +1,9 @@
 import "dotenv/config";
 import express from "express";
+import path from "node:path";
 import authRouter from "./routers/auth.route.js";
 import bookRouter from "./routers/book.route.js";
+import AuthorRouter from "./routers/author.route.js";
 import BaseError from "./errors/auth.errors.js";
 import { prisma } from "./services/prisma.js";
 import globalRouter from "./routers/global.route.js";
@@ -21,10 +23,12 @@ app.use(
 );
 
 app.use(express.json());
+app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 
 app.use("/", globalRouter);
 app.use("/auth", authRouter);
 app.use("/book", bookRouter);
+app.use("/author", AuthorRouter);
 
 app.use(
   (

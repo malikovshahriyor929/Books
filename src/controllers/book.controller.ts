@@ -2,7 +2,12 @@ import type e from "express";
 import BaseError from "../errors/auth.errors.js";
 import bookService from "../services/books/book.service.js";
 import { prisma } from "../services/prisma.js";
-import { AccessType } from "../generated/prisma/enums.js";
+import {
+  AccessType,
+  BookStatus,
+  Monetization,
+} from "../generated/prisma/enums.js";
+import { ChapterDto } from "../dtos/book.dto.js";
 
 class BookController {
   async getBooks(req: e.Request, res: e.Response, next: e.NextFunction) {
@@ -109,7 +114,7 @@ class BookController {
       );
     }
   }
-  async myBooks(req: e.Request, res: e.Response, next: e.NextFunction) {
+  async myRentedBooks(req: e.Request, res: e.Response, next: e.NextFunction) {
     try {
       const userId = req.user?.id as string | undefined;
 
@@ -156,6 +161,60 @@ class BookController {
     }
   }
 
+  async myBooks(req: e.Request, res: e.Response, next: e.NextFunction) {
+    try {
+      const userId = req.user?.id as string | undefined;
+      const { page, per_page } = req.query;
+
+      if (!page || !per_page) {
+        return next(
+          BaseError.badRequest(
+            "Get my books failed",
+            "page and per_page is required",
+          ),
+        );
+      }
+
+      if (!userId) {
+        return next(BaseError.UnauthorizedError());
+      }
+
+      const pageNum = Number(page);
+      const perPageNum = Number(per_page);
+
+      const skip = (pageNum - 1) * perPageNum;
+      const take = perPageNum;
+
+      const total = await prisma.book.count({
+        where: {
+          authorId: userId,
+        },
+      });
+
+      const result = await prisma.book.findMany({
+        where: {
+          authorId: userId,
+        },
+        skip,
+        take,
+      });
+
+      return res
+        .status(200)
+        .json({
+          data: result,
+          _meta: { page: pageNum, per_page: perPageNum, total },
+        });
+    } catch (error) {
+      next(
+        BaseError.badRequest(
+          "Get my books failed",
+          (error as Error).message || "Unknown error",
+        ),
+      );
+    }
+  }
+
   async rentBook(req: e.Request, res: e.Response, next: e.NextFunction) {
     try {
       const { bookId, period } = req.body;
@@ -185,13 +244,177 @@ class BookController {
   async editBook(req: e.Request, res: e.Response, next: e.NextFunction) {
     try {
       const { id } = req.params;
+      const body = req.body as FormData;
+      // as {
+      //   title: string;
+      //   language: string;
+      //   category: string;
+      //   status: BookStatus;
+      //   visibility: string;
+      //   monetization: Monetization;
+      //   buyPriceCents: number;
+      //   rentPriceCents: number;
+      //   rentDurationDays: number;
+      //   currency: string;
+      //   description: string;
+      //   coverUrl: string;
+      // };
+      console.log(body);
 
-      const result = await bookService.editBook(id as string, req.user.id);
+      const result = await bookService.editBook(
+        id as string,
+        req.user.id,
+        body,
+      );
       res.status(200).json(result);
     } catch (error) {
       next(
         BaseError.badRequest(
           "Editing book failed",
+          (error as Error).message || "Unknown error",
+        ),
+      );
+    }
+  }
+  async getChapters(req: e.Request, res: e.Response, next: e.NextFunction) {
+    try {
+      const { bookId } = req.params;
+      const { page, per_page } = req.query;
+
+      if (!bookId) {
+        return next(
+          BaseError.badRequest("Get chapters failed", "bookId is required"),
+        );
+      }
+
+      if (!page || !per_page) {
+        return next(
+          BaseError.badRequest(
+            "Get chapters failed",
+            "page and per_page are required",
+          ),
+        );
+      }
+      const pageNum = Number(page);
+      const perPageNum = Number(per_page);
+
+      if (!Number.isFinite(pageNum) || pageNum < 1)
+        throw new Error("Invalid page");
+      if (!Number.isFinite(perPageNum) || perPageNum < 1)
+        throw new Error("Invalid per_page");
+
+      const skip = (pageNum - 1) * perPageNum;
+      const take = perPageNum;
+
+      const result = await prisma.chapter.findMany({
+        where: { bookId: bookId as string },
+        orderBy: { order: "asc" },
+        skip,
+        take,
+      });
+      const total = await prisma.chapter.count({
+        where: { bookId: bookId as string },
+      });
+      const resDto = result.map((chapter) => new ChapterDto(chapter));
+      return res.status(200).json({
+        data: resDto,
+        _meta: {
+          page: pageNum,
+          per_page: perPageNum,
+          total,
+        },
+      });
+    } catch (error) {
+      next(
+        BaseError.badRequest(
+          "Get chapters failed",
+          (error as Error).message || "Unknown error",
+        ),
+      );
+    }
+  }
+  async getChapterOrder(req: e.Request, res: e.Response, next: e.NextFunction) {
+    try {
+      const { bookId, orderId } = req.params;
+
+      const result = await bookService.getChapterOrder(
+        bookId as string,
+        orderId as string,
+      );
+      return res.status(200).json(result);
+    } catch (error) {
+      next(
+        BaseError.badRequest(
+          "Get chapter failed",
+          (error as Error).message || "Unknown error",
+        ),
+      );
+    }
+  }
+  async createBook(req: e.Request, res: e.Response, next: e.NextFunction) {
+    try {
+      const userId = req.user?.id as string | undefined;
+
+      if (!userId) {
+        return next(BaseError.UnauthorizedError());
+      }
+
+      const body = req.body as FormData;
+      const result = await bookService.createBook(userId, body);
+      return res.status(200).json(result);
+    } catch (error) {
+      next(
+        BaseError.badRequest(
+          "Create book failed",
+          (error as Error).message || "Unknown error",
+        ),
+      );
+    }
+  }
+  async createChapterOrder(
+    req: e.Request,
+    res: e.Response,
+    next: e.NextFunction,
+  ) {
+    try {
+      const userId = req.user?.id as string | undefined;
+      const body = req.body as FormData;
+      const { bookId } = req.params;
+
+      if (!userId) {
+        return next(BaseError.UnauthorizedError());
+      }
+
+      const result = await bookService.createChapter(
+        userId,
+        body,
+        bookId as string,
+      );
+      return res.status(200).json(result);
+    } catch (error) {
+      next(
+        BaseError.badRequest(
+          "Create chapter order failed",
+          (error as Error).message || "Unknown error",
+        ),
+      );
+    }
+  }
+  async editChapter(req: e.Request, res: e.Response, next: e.NextFunction) {
+    try {
+      const { bookId, chapterId } = req.params;
+
+      const body = req.body as FormData;
+      const result = await bookService.editChapter(
+        chapterId as string,
+        bookId as string,
+        body,
+      );
+      return res.status(200).json(result);
+    } catch (error) {
+      next(
+        BaseError.badRequest(
+          "Edit chapter failed",
           (error as Error).message || "Unknown error",
         ),
       );

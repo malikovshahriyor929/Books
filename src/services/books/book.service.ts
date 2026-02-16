@@ -377,18 +377,155 @@ class BookService {
       };
     });
   }
-  async editBook(bookId: string, userId: string) {
+  async editBook(bookId: string, userId: string, body: any) {
     if (!userId) throw new Error("Authour id missing");
     if (!bookId) throw new Error("Book id missing");
     const userRole = await prisma.user.findFirst({
       where: {
-        id: userId
+        id: userId,
       },
     });
-    console.log(userRole);
-    
+    if (!userRole) throw new Error("User not found");
+    const book = await prisma.book.findFirst({
+      where: {
+        id: bookId,
+      },
+    });
+    if (!book) throw new Error("Book not found");
+
+    const updatedBook = await prisma.book.update({
+      where: {
+        id: bookId,
+      },
+      data: {
+        title: body.title,
+        language: body.language,
+        category: body.category,
+        status: body.status,
+        // visibility: body.visibility,
+        monetization: body.monetization,
+        buyPriceCents: body.buyPriceCents,
+        rentPriceCents: body.rentPriceCents,
+        rentDurationDays: body.rentDurationDays,
+        currency: body.currency,
+        description: body.description,
+        coverUrl: body.coverUrl,
+      },
+    });
+
+    return updatedBook;
   }
-  // })
+  async getChapterOrder(bookId: string, orderId: string) {
+    const currentOrder = Number(orderId);
+    if (!Number.isFinite(currentOrder) || currentOrder < 1) {
+      throw new Error("Invalid orderId");
+    }
+
+    const [chapter, prevChapter, nextChapter, total] = await Promise.all([
+      prisma.chapter.findFirst({
+        where: {
+          bookId,
+          order: currentOrder,
+        },
+      }),
+      prisma.chapter.findFirst({
+        where: {
+          bookId,
+          order: { lt: currentOrder },
+        },
+        orderBy: { order: "desc" },
+        select: { order: true },
+      }),
+      prisma.chapter.findFirst({
+        where: {
+          bookId,
+          order: { gt: currentOrder },
+        },
+        orderBy: { order: "asc" },
+        select: { order: true },
+      }),
+      prisma.chapter.count({
+        where: { bookId },
+      }),
+    ]);
+
+    if (!chapter) throw new Error("Chapter not found");
+
+    return {
+      chapter,
+      nav: {
+        prev: prevChapter?.order ?? null,
+        total,
+        next: nextChapter?.order ?? null,
+      },
+    };
+  }
+
+  async createBook(userId: string, body: any) {
+    if (!userId) throw new Error("Authour id missing");
+
+    const newBook = await prisma.book.create({
+      data: {
+        title: body.title,
+        language: body.language,
+        category: body.category,
+        status: body.status,
+        visibility: body.visibility,
+        monetization: body.monetization,
+        buyPriceCents: body.buyPriceCents,
+        rentPriceCents: body.rentPriceCents,
+        rentDurationDays: body.rentDurationDays,
+        currency: body.currency,
+        description: body.description,
+        coverUrl: body.coverUrl,
+        authorId: userId,
+      },
+    });
+    return newBook;
+  }
+  async createChapter(userId: string, body: any, bookId: string) {
+    if (!userId) throw new Error("Authour id missing");
+    const chapter = await prisma.chapter.findFirst({
+      where: {
+        bookId,
+      },
+      orderBy: {
+        order: "desc",
+      },
+    });
+
+    const newChapter = await prisma.chapter.create({
+      data: {
+        ...body,
+        order: chapter ? chapter.order + 1 : 1,
+        bookId,
+      },
+    });
+    return newChapter;
+  }
+  async editChapter(chapterId: string,  bookId: string, body: any) {
+    if (!chapterId) throw new Error("Order id missing");
+    if (!bookId) throw new Error("Authour id missing");
+    const chapter = await prisma.chapter.findFirst({
+      where: {
+        id:chapterId,
+        bookId,
+        // order: Number(order),
+      },
+    });
+    if (!chapter) throw new Error("Chapter not found");
+    const updatedChapter = await prisma.chapter.update({
+      where: {
+        id: chapterId,
+        bookId,
+        // order: Number(order),
+      },
+      data: {
+        ...body,
+      },
+    });
+    return updatedChapter;
+  }
 }
 
 export default new BookService();
