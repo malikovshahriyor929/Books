@@ -2,6 +2,7 @@ services:
   - type: web
     name: booking-backend
     runtime: node
+    rootDir: .
     plan: free
     buildCommand: npm run render-build
     startCommand: npm start
