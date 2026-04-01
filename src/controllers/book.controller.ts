@@ -12,27 +12,65 @@ import { ChapterDto } from "../dtos/book.dto.js";
 class BookController {
   async getBooks(req: e.Request, res: e.Response, next: e.NextFunction) {
     try {
-      const { page, per_page, search, sort, category } = req.query;
+      const {
+        page,
+        per_page,
+        perPage,
+        search,
+        sort,
+        category,
+        status,
+        language,
+      } = req.query;
+      const minPagesRaw =
+        req.query.minPages ??
+        req.query.min_pages ??
+        req.query.min_page ??
+        req.query.pages_from ??
+        req.query.page_from ??
+        req.query.min_chapters;
+      const maxPagesRaw =
+        req.query.maxPages ??
+        req.query.max_pages ??
+        req.query.max_page ??
+        req.query.pages_to ??
+        req.query.page_to ??
+        req.query.max_chapters;
       const pageNum = Number(page ?? 1);
-      const perPageNum = Number(per_page ?? 10);
+      const perPageNum = Number(perPage ?? per_page ?? 10);
+      const minPages = minPagesRaw != null ? Number(minPagesRaw) : undefined;
+      const maxPages = maxPagesRaw != null ? Number(maxPagesRaw) : undefined;
 
       if (!Number.isFinite(pageNum) || pageNum < 1)
         throw new Error("Invalid page");
       if (!Number.isFinite(perPageNum) || perPageNum < 1)
-        throw new Error("Invalid per_page");
+        throw new Error("Invalid perPage");
+      if (minPagesRaw != null && (!Number.isFinite(minPages!) || minPages! < 0))
+        throw new Error("Invalid minPages");
+      if (maxPagesRaw != null && (!Number.isFinite(maxPages!) || maxPages! < 0))
+        throw new Error("Invalid maxPages");
 
-      const result = await bookService.getBooks(
-        pageNum,
-        perPageNum,
-        search ? String(search) : undefined,
-        sort ? String(sort) : undefined,
-        category ? String(category) : undefined,
-      );
+      const result = await bookService.getBooks({
+        page: pageNum,
+        perPage: perPageNum,
+        search: search ? String(search) : undefined,
+        sort: sort ? String(sort) : undefined,
+        category: category ? String(category) : undefined,
+        status: status ? String(status) : undefined,
+        language: language ? String(language) : undefined,
+        minPages,
+        maxPages,
+      });
 
       res.status(200).json({
         message: "Books fetched successfully",
-        data: result,
-        _meta: { page: pageNum, per_page: perPageNum, total: result.length },
+        data: result.books,
+        _meta: {
+          page: pageNum,
+          perPage: perPageNum,
+          per_page: perPageNum,
+          total: result.total,
+        },
       });
     } catch (error) {
       next(
@@ -46,8 +84,9 @@ class BookController {
   async getBookDetails(req: e.Request, res: e.Response, next: e.NextFunction) {
     try {
       const { id } = req.params;
+      const userId = req.user?.id as string | undefined;
 
-      const result = await bookService.getBookDetails(id as string);
+      const result = await bookService.getBookDetails(id as string, userId);
 
       if (result) {
         res.status(200).json({
@@ -199,12 +238,10 @@ class BookController {
         take,
       });
 
-      return res
-        .status(200)
-        .json({
-          data: result,
-          _meta: { page: pageNum, per_page: perPageNum, total },
-        });
+      return res.status(200).json({
+        data: result,
+        _meta: { page: pageNum, per_page: perPageNum, total },
+      });
     } catch (error) {
       next(
         BaseError.badRequest(
@@ -415,6 +452,45 @@ class BookController {
       next(
         BaseError.badRequest(
           "Edit chapter failed",
+          (error as Error).message || "Unknown error",
+        ),
+      );
+    }
+  }
+  async saveBook(req: e.Request, res: e.Response, next: e.NextFunction) {
+    try {
+      const { bookId } = req.params;
+      const userId = req.user?.id as string | undefined;
+
+      if (!userId) {
+        return next(BaseError.UnauthorizedError());
+      }
+
+      const result = await bookService.saveBook(bookId as string, userId);
+      return res.status(200).json(result);
+    } catch (error) {
+      next(
+        BaseError.badRequest(
+          "Save book failed",
+          (error as Error).message || "Unknown error",
+        ),
+      );
+    }
+  }
+  async getSavedBooks(req: e.Request, res: e.Response, next: e.NextFunction) {
+    try {
+      const userId = req.user?.id as string | undefined;
+      const { page, per_page } = req.query as { page: string; per_page: string };
+
+      if (!userId) {
+        return next(BaseError.UnauthorizedError());
+      }
+      const result = await bookService.getSavedBooks(userId, +page, +per_page);
+      return res.status(200).json(result);
+    } catch (error) {
+      next(
+        BaseError.badRequest(
+          "Get saved books failed",
           (error as Error).message || "Unknown error",
         ),
       );

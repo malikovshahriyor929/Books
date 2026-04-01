@@ -1,71 +1,244 @@
 import { prisma } from "../prisma.js";
+import { Prisma } from "../../generated/prisma/client.js";
 import {
   AccessType,
   BookStatus,
+  type BookStatus as BookStatusValue,
   Monetization,
   OrderStatus,
   OrderType,
 } from "../../generated/prisma/enums.js";
 import BaseError from "../../errors/auth.errors.js";
 
+const publicAuthorSelect = {
+  id: true,
+  name: true,
+  avatar: true,
+  authorProfile: {
+    select: {
+      penName: true,
+      bio: true,
+      avatarUrl: true,
+    },
+  },
+};
+
+type GetBooksParams = {
+  page: number;
+  perPage: number;
+  search?: string | undefined;
+  sort?: string | undefined;
+  category?: string | undefined;
+  status?: string | undefined;
+  language?: string | undefined;
+  minPages?: number | undefined;
+  maxPages?: number | undefined;
+};
+
+const filterStatusMap: Record<string, BookStatusValue | "ALL"> = {
+  all: "ALL",
+  barchasi: "ALL",
+  draft: BookStatus.DRAFT,
+  published: BookStatus.PUBLISHED,
+  archived: BookStatus.ARCHIVED,
+  tugallangan: BookStatus.ARCHIVED,
+  completed: BookStatus.ARCHIVED,
+  ongoing: BookStatus.PUBLISHED,
+  davom_etmoqda: BookStatus.PUBLISHED,
+};
+
+function splitFilterValues(value?: string) {
+  if (!value) return [];
+
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeBookStatus(status?: string) {
+  if (!status) return undefined;
+
+  const normalizedStatus = status.trim().toLowerCase().replace(/\s+/g, "_");
+  const mappedStatus = filterStatusMap[normalizedStatus];
+
+  if (!mappedStatus) {
+    const validStatuses = Object.keys(filterStatusMap).join(", ");
+    throw new Error(`Invalid status. Allowed values: ${validStatuses}`);
+  }
+
+  return mappedStatus === "ALL" ? undefined : mappedStatus;
+}
+
+function buildStringFilter(
+  field: "category" | "language",
+  values: string[],
+): Prisma.BookWhereInput | undefined {
+  if (!values.length) return undefined;
+
+  return {
+    OR: values.map((value) => ({
+      [field]: { equals: value, mode: "insensitive" },
+    })),
+  } as Prisma.BookWhereInput;
+}
+
+function mapBookWithChapterCount<T extends { _count: { chapters: number } }>(
+  book: T,
+) {
+  const { _count, ...rest } = book;
+
+  return {
+    ...rest,
+    chapterCount: _count.chapters,
+  };
+}
+
 class BookService {
-  async getBooks(
-    page: number,
-    per_page: number,
-    search?: string,
-    sort?: string,
-    category?: string,
-  ) {
-    const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+  async getBooks(params: GetBooksParams) {
+    const safePage =
+      Number.isFinite(params.page) && params.page > 0
+        ? Math.floor(params.page)
+        : 1;
     const safePerPage =
-      Number.isFinite(per_page) && per_page > 0 ? Math.floor(per_page) : 10;
+      Number.isFinite(params.perPage) && params.perPage > 0
+        ? Math.floor(params.perPage)
+        : 10;
 
     const skip = (safePage - 1) * safePerPage;
     const take = safePerPage;
+    const minPages =
+      params.minPages != null
+        ? Math.max(0, Math.floor(params.minPages))
+        : undefined;
+    const maxPages =
+      params.maxPages != null
+        ? Math.max(0, Math.floor(params.maxPages))
+        : undefined;
 
-    const where: any = {};
-    if (search) {
-      where.OR = [
-        { title: { contains: search, mode: "insensitive" } },
-        { description: { contains: search, mode: "insensitive" } },
-        {
-          author: {
-            is: { name: { contains: search, mode: "insensitive" } },
+    if (minPages != null && maxPages != null && minPages > maxPages) {
+      throw new Error("min_pages cannot be greater than max_pages");
+    }
+
+    const where: Prisma.BookWhereInput = {};
+    const andFilters: Prisma.BookWhereInput[] = [];
+
+    if (params.search) {
+      andFilters.push({
+        OR: [
+          {
+            title: { contains: params.search, mode: "insensitive" },
           },
-        },
-      ];
+          {
+            description: {
+              contains: params.search,
+              mode: "insensitive",
+            },
+          },
+          {
+            author: {
+              is: { name: { contains: params.search, mode: "insensitive" } },
+            },
+          },
+        ],
+      });
     }
 
-    if (category) {
-      where.category = { equals: category, mode: "insensitive" };
+    const categoryFilter = buildStringFilter(
+      "category",
+      splitFilterValues(params.category),
+    );
+    if (categoryFilter) {
+      andFilters.push(categoryFilter);
     }
 
-    const orderBy: any = sort
-      ? {
-          [sort.replace("-", "")]: sort.startsWith("-") ? "desc" : "asc",
-        }
+    const languageFilter = buildStringFilter(
+      "language",
+      splitFilterValues(params.language),
+    );
+    if (languageFilter) {
+      andFilters.push(languageFilter);
+    }
+
+    const statusFilter = normalizeBookStatus(params.status);
+    if (statusFilter) {
+      andFilters.push({ status: statusFilter });
+    }
+
+    if (andFilters.length) {
+      where.AND = andFilters;
+    }
+
+    const orderBy: Prisma.BookOrderByWithRelationInput = params.sort
+      ? ({
+          [params.sort.replace("-", "")]: params.sort.startsWith("-")
+            ? "desc"
+            : "asc",
+        } as Prisma.BookOrderByWithRelationInput)
       : { createdAt: "desc" };
 
-    const books = await prisma.book.findMany({
+    const queryOptions = {
       where,
       orderBy,
-      skip,
-      take,
-    });
-    return books;
+      include: {
+        author: {
+          select: publicAuthorSelect,
+        },
+        _count: {
+          select: {
+            chapters: true,
+          },
+        },
+      },
+    } satisfies Prisma.BookFindManyArgs;
+
+    if (minPages != null || maxPages != null) {
+      const books = await prisma.book.findMany(queryOptions);
+      const filteredBooks = books.filter((book) => {
+        if (minPages != null && book._count.chapters < minPages) return false;
+        if (maxPages != null && book._count.chapters > maxPages) return false;
+
+        return true;
+      });
+
+      return {
+        books: filteredBooks
+          .slice(skip, skip + take)
+          .map(mapBookWithChapterCount),
+        total: filteredBooks.length,
+      };
+    }
+
+    const [total, books] = await Promise.all([
+      prisma.book.count({ where }),
+      prisma.book.findMany({
+        ...queryOptions,
+        skip,
+        take,
+      }),
+    ]);
+
+    return {
+      books: books.map(mapBookWithChapterCount),
+      total,
+    };
   }
-  async getBookDetails(id: string) {
+  async getBookDetails(id: string, userId?: string) {
     const book = await prisma.book.findUnique({
       where: { id },
     });
-    return book;
+    const is_Author = book?.authorId === userId;
+
+    return { ...book, is_Author };
   }
   async getBookAuthtorDetails(id: string) {
     const book = await prisma.book.findUnique({
       where: { id },
-      // include: {
-      //   author: true,
-      // },
+      include: {
+        author: {
+          select: publicAuthorSelect,
+        },
+      },
     });
     console.log(id);
 
@@ -503,12 +676,12 @@ class BookService {
     });
     return newChapter;
   }
-  async editChapter(chapterId: string,  bookId: string, body: any) {
+  async editChapter(chapterId: string, bookId: string, body: any) {
     if (!chapterId) throw new Error("Order id missing");
     if (!bookId) throw new Error("Authour id missing");
     const chapter = await prisma.chapter.findFirst({
       where: {
-        id:chapterId,
+        id: chapterId,
         bookId,
         // order: Number(order),
       },
@@ -525,6 +698,74 @@ class BookService {
       },
     });
     return updatedChapter;
+  }
+  async saveBook(bookId: string, userId: string) {
+    if (!userId) throw new Error("User id missing");
+    if (!bookId) throw new Error("Book id missing");
+    return prisma.$transaction(async (tx) => {
+      const book = await tx.book.findUnique({
+        where: { id: bookId },
+        select: { id: true },
+      });
+      if (!book) {
+        throw new Error("Book not found");
+      }
+
+      const existingSave = await tx.save.findUnique({
+        where: {
+          userId_bookId: {
+            userId,
+            bookId,
+          },
+        },
+      });
+
+      if (existingSave) {
+        await tx.save.delete({
+          where: {
+            userId_bookId: {
+              userId,
+              bookId,
+            },
+          },
+        });
+        return { message: "Book unsaved" };
+      }
+
+      await tx.save.create({
+        data: {
+          userId,
+          bookId,
+        },
+      });
+      return { message: "Book saved" };
+    });
+  }
+  async getSavedBooks(userId: string, page: number, per_page: number) {
+    if (!userId) throw new Error("User id missing");
+    const skip = (page - 1) * per_page;
+    const take = per_page;
+    const result = await prisma.book.findMany({
+      where: {
+        saves: {
+          some: {
+            userId,
+          },
+        },
+      },
+      skip,
+      take,
+    });
+    const total = await prisma.book.count({
+      where: {
+        saves: {
+          some: {
+            userId,
+          },
+        },
+      },
+    });
+    return { books: result, _meta: { page, per_page, total } };
   }
 }
 

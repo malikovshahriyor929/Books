@@ -21,5 +21,8 @@ router.put("/edit-book/:id",authMiddleware,bookController.editBook );
 router.post("/create-chapter/:bookId", authMiddleware, bookController.createChapterOrder);
 router.put("/put-chapter/:bookId/:chapterId", authMiddleware, bookController.editChapter);
 
+router.post("/save-book/:bookId", authMiddleware, bookController.saveBook);
+router.get("/get-saved-books", authMiddleware, bookController.getSavedBooks);
+
 
 export default router;

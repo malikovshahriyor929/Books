@@ -82,6 +82,8 @@ model User {
   balanceCents Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  saveCount    Int      @default(0)
+  avatar       String   @default("")
 
   authorProfile   AuthorProfile?
   authoredBooks   Book[]            @relation("AuthorBooks")
@@ -89,8 +91,22 @@ model User {
   orders          Order[]
   accesses        BookAccess[]
   readingProgress ReadingProgress[]
+  saves           Save[]
 
   @@index([role])
+}
+
+model Save {
+  id        String   @id @default(cuid())
+  userId    String
+  bookId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bookId])
+  @@index([bookId])
 }
 
 model Token {
@@ -136,6 +152,7 @@ model Book {
   chapters Chapter[]
   tags     BookTag[]
   reviews  Review[]
+  saves    Save[]
   orders   Order[]
   accesses BookAccess[]
 
